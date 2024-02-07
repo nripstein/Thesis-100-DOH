@@ -1,0 +1,12 @@
+conda create --name handobj_new python=3.8
+conda activate handobj_new
+conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
+pip install -r requirements.txt
+cd lib
+# then install gcc 10 with 
+sudo apt install gcc-10 g++-10
+export CC=/usr/bin/gcc-10
+export CXX=/usr/bin/g++-10
+# now that I have gcc 10, can compile
+CC=/usr/bin/gcc-10 CXX=/usr/bin/g++-10 python setup.py build develop
+conda install pandas
