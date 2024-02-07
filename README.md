@@ -1,5 +1,5 @@
 # Hand Object Detector 
-This is the code for our paper *Understanding Human Hands in Contact at Internet Scale* (CVPR 2020, **Oral**).
+Adopted from [100-DOH Repository](https://github.com/ddshan/hand_object_detector), which is the code for the paper *Understanding Human Hands in Contact at Internet Scale* (CVPR 2020, **Oral**).
 
 Dandan Shan, Jiaqi Geng*, Michelle Shu*, David F. Fouhey
 
@@ -26,37 +26,32 @@ Create a conda env called handobj_new, install pytorch-1.12.1, cuda-11.3:
 conda create --name handobj_new python=3.8
 conda activate handobj_new
 conda install pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
+pip install -r requirements.txt
+cd lib
+# then install gcc 10  
+sudo apt install gcc-10 g++-10
+export CC=/usr/bin/gcc-10
+export CXX=/usr/bin/g++-10
+# now that I have gcc 10, can compile
+CC=/usr/bin/gcc-10 CXX=/usr/bin/g++-10 python setup.py build develop
 ```
-
-
-
-[Old, deprecated] Create a conda env called handobj, install pytorch-1.0.1, cuda-10.0:
-* Python 3.6
-* Pytorch 1.0
-* CUDA 10.0
-```
-conda create --name handobj python=3.6
-conda activate handobj
-conda install pytorch=1.0.1 torchvision cudatoolkit=10.0 -c pytorch
-```
-
 
 ## Preparation
 
 First of all, clone the code
 ```
-git clone https://github.com/ddshan/hand_object_detector && cd hand_object_detector
+git clone https://github.com/nripstein/Thesis-100-DOH && cd hand_object_detector
 ```
-
 
 ## Environment & Compilation
 
 Install all the python dependencies using pip:
 ```
 pip install -r requirements.txt
+conda install pandas
 ```
 
-Compile the cuda dependencies using following simple commands:
+Compile the cuda dependencies using following simple commands (completed in prerequisites section):
 ```
 cd lib
 python setup.py build develop
@@ -325,4 +320,4 @@ If this work is helpful in your research, please cite:
     year = {2020} 
 }
 ```
-When you use the model trained on our ego data, make sure to also cite the original datasets ([Epic-Kitchens](https://epic-kitchens.github.io/2018), [EGTEA](http://cbs.ic.gatech.edu/fpv/) and [CharadesEgo](https://prior.allenai.org/projects/charades-ego)) that we collect from and agree to the original conditions for using that data.
+When you use the model trained on our ego data, make sure to also cite the original datasets ([Epic-Kitchens](https://epic-kitchens.github.io/2018), [EGTEA](http://cbs.ic.gatech.edu/fpv/) and [CharadesEgo](https://prior.allenai.org/projects/charades-ego)) that we collect from and agree to the original conditions for using that data.](https://github.com/ddshan/hand_object_detector)
