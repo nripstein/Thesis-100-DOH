@@ -123,38 +123,46 @@ def parse_args():
     return args
 
 
-def zoom_image(image: np.ndarray, zoom_percentage: float) -> np.ndarray:
+def get_blue_bbox_proportion(img: np.ndarray, bbox: list, vis_debug: bool = False) -> float:
     """
-    Zooms in on an image by a specified percentage while keeping the center fixed.
-
-    Parameters:
-        image (numpy.ndarray): The input image represented as a numpy array.
-        zoom_percentage (float): The percentage by which to zoom in (e.g., 10 for 10% zoom in).
-
-    Returns:
-        numpy.ndarray: The zoomed-in image with the center fixed.
+    Args:
+        img (np.ndarray): BGR from OpenCV
+        bbox (list[int]): Of the form [left, top, right, bottom]
+        vis_debug (bool): if True, a visual of the bounding box will appear
     """
-    # Calculate the zoom factor based on the zoom_percentage
-    scale_factor = 1 + (zoom_percentage / 100.0)
+    def visualize_masked_bbox(img, bbox, blue_mask):
+        # Create a mask image with the same dimensions as the bounding box area
+        mask_img = np.zeros((bbox[3] - bbox[1], bbox[2] - bbox[0], 3), dtype=np.uint8)
+        # Fill the bounding box area in the mask with the blue mask
+        mask_img[:, :, 0] = blue_mask[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+        # Apply the mask to the original image within the bounding box area
+        masked_img = cv2.bitwise_and(img[bbox[1]:bbox[3], bbox[0]:bbox[2]], mask_img)
+        # Display the masked image
+        cv2.imshow('Blue Masked Bounding Box', masked_img)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
-    # Calculate the new dimensions after zooming
-    new_height = int(image.shape[0] * scale_factor)
-    new_width = int(image.shape[1] * scale_factor)
-
-    # Calculate the cropping box to keep the center of the image
-    left = (new_width - image.shape[1]) // 2
-    right = new_width - image.shape[1] - left
-    top = (new_height - image.shape[0]) // 2
-    bottom = new_height - image.shape[0] - top
-
-    # Apply zoom with cropping to the center
-    zoomed_image = zoom(image, zoom=(scale_factor, scale_factor, 1), mode='nearest',
-                        prefilter=False)
-
-    # Crop the zoomed image to keep the center
-    zoomed_image = zoomed_image[top:-bottom, left:-right]
-
-    return zoomed_image
+    # Convert the image to HSV color space
+    hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    # Define the lower and upper bounds of the "blue" color in HSV
+    LOWER_BLUE = np.array([90, 50, 50])
+    UPPER_BLUE = np.array([130, 255, 255])
+    # Create a mask that isolates the pixels within the specified blue range
+    blue_mask = cv2.inRange(hsv_img, LOWER_BLUE, UPPER_BLUE)
+    if vis_debug:
+        # Call the inner function to visualize the masked bounding box
+        visualize_masked_bbox(img, bbox, blue_mask)
+    # Extract the bounding box area
+    bbox_area = blue_mask[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+    # Count the number of blue pixels within the bounding box
+    blue_pixels = np.count_nonzero(bbox_area)
+    # Calculate the total area of the bounding box
+    total_area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+    # Calculate the percentage of blue pixels within the bounding box
+    blue_proportion = blue_pixels / total_area
+    if vis_debug:
+        print(blue_pixels, total_area, blue_proportion)
+    return blue_proportion
 
 
 lr = cfg.TRAIN.LEARNING_RATE
@@ -305,7 +313,7 @@ def vis_detections_filtered_objects_PIL_NR(im, obj_dets, hand_dets, thresh_hand=
                 print(f"BBOX! {type(bbox)}, {bbox}")
                 image = draw_obj_mask(image, draw, obj_idx, bbox, score, width, height, font)
 
-        for hand_idx, i in enumerate(range(np.minimum(10, hand_dets.shape[0]))):
+        for hand_idx, i in enumerate(range(np.minimum(10, hand_dets.shape[0]))): # BOSSMAN
             bbox = list(int(np.round(x)) for x in hand_dets[i, :4])
             score = hand_dets[i, 4]
             lr = hand_dets[i, -1]
@@ -329,7 +337,7 @@ def vis_detections_filtered_objects_PIL_NR(im, obj_dets, hand_dets, thresh_hand=
     # return im
 
 
-def main(verbose=False, save_imgs=False, img_dir=None):
+def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=False):
     contact_label_map_english = {0: 'No Contact', 1: 'Self Contact', 2: 'Other Person Contact', 3: 'Portable Object Contact', 4: 'Stationary Object Contact'}
     output_dict = {}
     output_dict_new = {
@@ -462,13 +470,15 @@ def main(verbose=False, save_imgs=False, img_dir=None):
                 print(f'image dir = {args.image_dir}')
                 print(f'save dir = {args.save_dir}')
             imglist = os.listdir(args.image_dir)
+            # imglist = [f for f in os.listdir(args.image_dir) if not f.startswith('.')]  # idk why there are some hidden files, but this avoids them
             num_images = len(imglist)
 
-        print(f'Loaded {num_images} images.')
+        if verbose:
+            print(f'Loaded {num_images} images.')
 
         progress_bar = tqdm(total=num_images, desc='Processing Images')
 
-        while (num_images >= 0):  # was >=. I think > is appropriate
+        while num_images > 0:  # was >=. I think > is appropriate
 
             total_tic = time.time()
             if webcam_num == -1:
@@ -491,7 +501,6 @@ def main(verbose=False, save_imgs=False, img_dir=None):
             # NR ADDITION START
             if im is None:
                 continue
-            # im = zoom_image(im, 25)
             # NR ADDITION END
             blobs, im_scales = _get_image_blob(im)
             assert len(im_scales) == 1, "Only single-image batch implemented"
@@ -607,40 +616,60 @@ def main(verbose=False, save_imgs=False, img_dir=None):
                         obj_dets = cls_dets.cpu().numpy()
                     if pascal_classes[j] == 'hand':
                         hand_dets = cls_dets.cpu().numpy()
+            
+            # NR ADDITION START NOT DONE
+            for hand_idx, i in enumerate(range(np.minimum(10, hand_dets.shape[0]))):
+                bbox = list(int(np.round(x)) for x in hand_dets[i, :4])  # left, top, right, bottom
+                score = hand_dets[i, 4]
+                lr = hand_dets[i, -1]
+                state = hand_dets[i, 5]
+                state_map2 = {0:'N', 1:'S', 2:'O', 3:'P', 4:'F'}
+                side_map2 = {0:'Left', 1:'Right'}
+                state_map = {0:'No Contact', 1:'Self Contact', 2:'Other Person Contact', 3:'Portable Object', 4:'Stationary Object Contact'}
+                # if the hand is touching portable object, check how much blue is in it because we might need to refine that prediction to rule out glvoed hands
+                
+                if verbose:
+                    print(f"{imglist[num_images]}: {side_map2[lr]} hand: {state_map2[state]} {score:.2f}")
 
-                    # NR ADDITION START
-                    if verbose:
-                        print(f"----------------------{imglist[num_images]}----------------------")
-                        print(pascal_classes[j])
-                    contact_label_map = {0: 'N', 1: 'S', 2: 'O', 3: 'P', 4: 'F'}  # This is actual mapping
-                    contact_label_map_english = {0: 'No Contact', 1: 'Self Contact', 2: 'Other Person Contact', 3: 'Portable Object Contact', 4: 'Stationary Object Contact'}
-                    contact_indices_for_dets = contact_indices[inds]
-                    for det_index, det in enumerate(cls_dets):
-                        contact_index = contact_indices_for_dets[det_index].item()  # Get the contact index for this detection
-                        contact_label = contact_label_map.get(contact_index, 'Unknown')  # Get the contact label
-                        if verbose:
-                            print(f'Detection {det_index}: Contact Type - {contact_label}')
-                        contact_label_english = contact_label_map_english.get(contact_index, 'Unknown')
-                    output_dict[imglist[num_images]] = contact_label_english  # this loses info from printed stuff, but they all seem to be repeats
-                    if imglist[num_images] not in output_dict_new[contact_label_english]:
-                        output_dict_new[contact_label_english].append(imglist[num_images])
-                        df_row_list.append({'image': imglist[num_images], 'contact_label': contact_label_english})
-                    # NR ADDITION END
+                if blue_refine:
+                    if state == 3:
+                        hand_percent_blue = get_blue_bbox_proportion(im, bbox=bbox) * 100
+                    else:
+                        hand_percent_blue = -100
+                    if hand_percent_blue > 50:
+                        state = 0
+                        score = 1
 
+                df_row_list.append({'image': imglist[num_images], 'contact_label': state_map[state], 'probability': int(score * 100)})
+            # NR ADDITION END
+            # for j in range(1, len(pascal_classes)):  # loops through ('targetobject' 'hand')
+            #     # if there is det
+            #     if inds.numel() > 0:      
+            #         # NR ADDITION START
+            #         if verbose:
+            #             print(f"----------------------{imglist[num_images]}----------------------")
+            #             print(pascal_classes[j], "pascal j")
+            #         contact_label_map = {0: 'N', 1: 'S', 2: 'O', 3: 'P', 4: 'F'}  # This is actual mapping
+            #         contact_label_map_english = {0: 'No Contact', 1: 'Self Contact', 2: 'Other Person Contact', 3: 'Portable Object Contact', 4: 'Stationary Object Contact'}
+            #         contact_indices_for_dets = contact_indices[inds]
+            #         for det_index, det in enumerate(cls_dets):
+            #             contact_index = contact_indices_for_dets[det_index].item()  # Get the contact index for this detection
+            #             contact_label = contact_label_map.get(contact_index, 'Unknown')  # Get the contact label
+            #             if verbose:
+            #                 print(f'Detection {det_index}: Contact Type - {contact_label}')
+            #             contact_label_english = contact_label_map_english.get(contact_index, 'Unknown')
+            #         output_dict[imglist[num_images]] = contact_label_english  # this loses info from printed stuff, but they all seem to be repeats
+            #         if imglist[num_images] not in output_dict_new[contact_label_english]:
+            #             output_dict_new[contact_label_english].append(imglist[num_images])
+            #             # df_row_list.append({'image': imglist[num_images], 'contact_label': contact_label_english})  # BOSSMAN2
+            #         # NR ADDITION END
+                        
+            
+                
             if vis:
                 # visualization
                 # im2show = vis_detections_filtered_objects_PIL_NR(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)  # doesnt give output for some reason
-                
-                # NR ADDITION START NOT DONE
-                # for obj_idx, i in enumerate(range(np.minimum(10, obj_dets.shape[0]))):
-                #     bbox = list(int(np.round(x)) for x in obj_dets[i, :4]) # left, top, right, bottom
-                # NR ADDITION END
-
                 im2show = vis_detections_filtered_objects_PIL(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)
-
-                # print(type(obj_dets), obj_dets.shape)
-                # print(obj_dets)
-
 
             misc_toc = time.time()
             nms_time = misc_toc - misc_tic
@@ -681,6 +710,7 @@ if __name__ == "__main__":
     # results = results.iloc[results['image'].map(lambda x: int(x.split('_')[0])).argsort()].reset_index(drop=True) # sorts by image number if I'm using my image format
     # print(results)
     # Print the counts for each unique value
+    # need to use condense_dataframe() from caller.ipynb to get meaningful info out of it!
     print("--------results (ran from __name__ == __main__ ----------)")
     value_counts = results['contact_label'].value_counts()
     for label, count in value_counts.items():
