@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-# Thesis-100-DOH
-My modified version of 100-DOH for undergrad thesis
-=======
 # Hand Object Detector 
 Adopted from [100-DOH Repository](https://github.com/ddshan/hand_object_detector), which is the code for the paper *Understanding Human Hands in Contact at Internet Scale* (CVPR 2020, **Oral**).
 
@@ -325,4 +321,3 @@ If this work is helpful in your research, please cite:
 }
 ```
 When you use the model trained on our ego data, make sure to also cite the original datasets ([Epic-Kitchens](https://epic-kitchens.github.io/2018), [EGTEA](http://cbs.ic.gatech.edu/fpv/) and [CharadesEgo](https://prior.allenai.org/projects/charades-ego)) that we collect from and agree to the original conditions for using that data.](https://github.com/ddshan/hand_object_detector)
->>>>>>> 0ceec4a135d68449ce20286e1634984023a44ce2
