@@ -18,7 +18,7 @@ os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import pandas as pd
 from tqdm import tqdm
-from scipy.ndimage import zoom
+from PIL import Image
 #NR ADDITION END
 import pdb
 import time
@@ -210,134 +210,69 @@ def _get_image_blob(im: np.ndarray):
     return blob, np.array(im_scale_factors)
 
 
-def vis_detections_filtered_objects_PIL_NR(im, obj_dets, hand_dets, thresh_hand=0.8, thresh_obj=0.01, font_path='lib/model/utils/times_b.ttf'):
-    color_rgb = [(255,255,0), (255, 128,0), (128,255,0), (0,128,255), (0,0,255), (127,0,255), (255,0,255), (255,0,127), (255,0,0), (255,204,153), (255,102,102), (153,255,153), (153,153,255), (0,0,153)]
-    color_rgba = [(255,255,0,70), (255, 128,0,70), (128,255,0,70), (0,128,255,70), (0,0,255,70), (127,0,255,70), (255,0,255,70), (255,0,127,70), (255,0,0,70), (255,204,153,70), (255,102,102,70), (153,255,153,70), (153,153,255,70), (0,0,153,70)]
+def extract_frames(video_path: str) -> str:
+    """
+    Extracts frames and returns their dir
+    """
+    # Check if the file exists
+    if not os.path.isfile(video_path):
+        print(f"The file {video_path} does not exist.")
+        return
 
-
-    hand_rgb = [(0, 90, 181), (220, 50, 32)] 
-    hand_rgba = [(0, 90, 181, 70), (220, 50, 32, 70)]
-
-    obj_rgb = (255, 194, 10)
-    obj_rgba = (255, 194, 10, 70)
-
-
-    side_map = {'l':'Left', 'r':'Right'}
-    side_map2 = {0:'Left', 1:'Right'}
-    side_map3 = {0:'L', 1:'R'}
-    state_map = {0:'No Contact', 1:'Self Contact', 2:'Another Person', 3:'Portable Object', 4:'Stationary Object'}
-    state_map2 = {0:'N', 1:'S', 2:'O', 3:'P', 4:'F'}
-
+    # Extract the directory, video name, and extension
+    video_dir, video_filename = os.path.split(video_path)
+    video_name, video_ext = os.path.splitext(video_filename)
     
-    from PIL import Image, ImageDraw, ImageFont
+    # Define the directory to store images
+    images_dir = os.path.join(video_dir, f"{video_name}_imgs")
 
-    def draw_line_point(draw, side_idx, hand_center, object_center):
-        draw.line([hand_center, object_center], fill=hand_rgb[side_idx], width=4)
-        x, y = hand_center[0], hand_center[1]
-        r=7
-        draw.ellipse((x-r, y-r, x+r, y+r), fill=hand_rgb[side_idx])
-        x, y = object_center[0], object_center[1]
-        draw.ellipse((x-r, y-r, x+r, y+r), fill=obj_rgb)
+    # Create the directory if it does not exist
+    if not os.path.exists(images_dir):
+        os.makedirs(images_dir)
 
-    def filter_object(obj_dets, hand_dets):
-        filtered_object = []
-        object_cc_list = []
-        for j in range(obj_dets.shape[0]):
-            object_cc_list.append(calculate_center(obj_dets[j,:4]))
-        object_cc_list = np.array(object_cc_list)
-        img_obj_id = []
-        for i in range(hand_dets.shape[0]):
-            if hand_dets[i, 5] <= 0:
-                img_obj_id.append(-1)
-                continue
-            hand_cc = np.array(calculate_center(hand_dets[i,:4]))
-            point_cc = np.array([(hand_cc[0]+hand_dets[i,6]*10000*hand_dets[i,7]), (hand_cc[1]+hand_dets[i,6]*10000*hand_dets[i,8])])
-            dist = np.sum((object_cc_list - point_cc)**2,axis=1)
-            dist_min = np.argmin(dist)
-            img_obj_id.append(dist_min)
-        return img_obj_id
-    
-    def calculate_center(bb):
-        return [(bb[0] + bb[2])/2, (bb[1] + bb[3])/2]
+    # Open the video file
+    cap = cv2.VideoCapture(video_path)
+    frame_count = 0
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    def draw_obj_mask(image, draw, obj_idx, obj_bbox, obj_score, width, height, font):
+    with tqdm(total=total_frames, desc=f'Extracting frames from {video_filename}') as pbar:
+        while True:
+            # Read a frame
+            ret, frame = cap.read()
 
-        mask = Image.new('RGBA', (width, height))
-        pmask = ImageDraw.Draw(mask)
-        pmask.rectangle(obj_bbox, outline=obj_rgb, width=4, fill=obj_rgba) 
-        image.paste(mask, (0,0), mask)  
+            # If frame is read correctly ret is True
+            if not ret:
+                break
 
-        draw.rectangle(
-            [obj_bbox[0], max(0, obj_bbox[1] - 30), obj_bbox[0] + 32, max(0, obj_bbox[1] - 30) + 30],  # left, top, right, bottom
-            fill=(255, 255, 255),  # Fill color of the rectangle (white in this case).
-            outline=obj_rgb,        # Outline color of the rectangle (specified elsewhere in the code).
-            width=4                # Width of the outline (4 pixels in this case).
-        )
-        draw.text((obj_bbox[0]+5, max(0, obj_bbox[1]-30)-2), f'O', font=font, fill=(0,0,0)) #
+            # Define the image filename
+            image_filename = os.path.join(images_dir, f"{frame_count}_{video_name}.png")
 
-        return image
+            # Save the frame as a PNG file
+            cv2.imwrite(image_filename, frame)
+
+            frame_count += 1
+            pbar.update(1)  # Update progress bar
+
+    cap.release()
+    return images_dir
 
 
-    def draw_hand_mask(image, draw, hand_idx, hand_bbox, hand_score, side, state, width, height, font):
-        if side == 0:
-            side_idx = 0
-        elif side == 1:
-            side_idx = 1
-        mask = Image.new('RGBA', (width, height))
-        pmask = ImageDraw.Draw(mask)
-        pmask.rectangle(hand_bbox, outline=hand_rgb[side_idx], width=4, fill=hand_rgba[side_idx])
-        image.paste(mask, (0, 0), mask)
 
-        # text
-        draw = ImageDraw.Draw(image)
-        draw.rectangle([hand_bbox[0], max(0, hand_bbox[1]-30), hand_bbox[0]+62, max(0, hand_bbox[1]-30)+30], fill=(255, 255, 255), outline=hand_rgb[side_idx], width=4)
-        draw.text((hand_bbox[0]+6, max(0, hand_bbox[1]-30)-2), f'{side_map3[int(float(side))]}-{state_map2[int(float(state))]}', font=font, fill=(0,0,0)) # 
+def dir_or_video(path):
+    def is_video_file(filename):
+        video_extensions = ['.mp4', '.avi', '.mkv', '.mov', '.flv']  # Add more video extensions if needed
+        _, file_extension = os.path.splitext(filename)
+        return file_extension.lower() in video_extensions
 
-        return image
-
-    # convert to PIL
-    im = im[:,:,::-1]
-    image = Image.fromarray(im).convert("RGBA")
-    draw = ImageDraw.Draw(image)
-    font = ImageFont.truetype(font_path, size=30)
-    width, height = image.size
-
-    if (obj_dets is not None) and (hand_dets is not None):
-        img_obj_id = filter_object(obj_dets, hand_dets)
-        for obj_idx, i in enumerate(range(np.minimum(10, obj_dets.shape[0]))):
-            bbox = list(int(np.round(x)) for x in obj_dets[i, :4]) # left, top, right, bottom
-            # print(f"type()")
-            score = obj_dets[i, 4]
-            if score > thresh_obj and i in img_obj_id:
-                # viz obj by PIL
-                print(f"BBOX! {type(bbox)}, {bbox}")
-                image = draw_obj_mask(image, draw, obj_idx, bbox, score, width, height, font)
-
-        for hand_idx, i in enumerate(range(np.minimum(10, hand_dets.shape[0]))): # BOSSMAN
-            bbox = list(int(np.round(x)) for x in hand_dets[i, :4])
-            score = hand_dets[i, 4]
-            lr = hand_dets[i, -1]
-            state = hand_dets[i, 5]
-            if score > thresh_hand:
-                # viz hand by PIL
-                image = draw_hand_mask(image, draw, hand_idx, bbox, score, lr, state, width, height, font)
-
-                if state > 0:  # in contact hand
-
-                    obj_cc, hand_cc = calculate_center(obj_dets[img_obj_id[i], :4]), calculate_center(bbox)
-                    # viz line by PIL
-                    if lr == 0:
-                        side_idx = 0
-                    elif lr == 1:
-                        side_idx = 1
-                    draw_line_point(draw, side_idx, (int(hand_cc[0]), int(hand_cc[1])), (int(obj_cc[0]), int(obj_cc[1])))
-    elif hand_dets is not None:
-        im = vis_detections(im, 'hand', hand_dets, thresh)
-    return im if isinstance(im, Image.Image) else Image.fromarray(im) if isinstance(im, np.ndarray) else None
-    # return im
+    if os.path.isdir(path):
+        return "dir"
+    elif is_video_file(path):
+        return "video"
+    else:
+        raise TypeError("TYPE OF FILE UNKNOWN")
 
 
-def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=False):
+def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=True):
     contact_label_map_english = {0: 'No Contact', 1: 'Self Contact', 2: 'Other Person Contact', 3: 'Portable Object Contact', 4: 'Stationary Object Contact'}
     output_dict = {}
     output_dict_new = {
@@ -353,7 +288,10 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=False):
     if img_dir is not None:
         args.image_dir = img_dir
 
-    # print(args)
+        dir_type = dir_or_video(img_dir)
+        if dir_type == "video":
+            new_img_dir = extract_frames(img_dir)
+        args.image_dir = new_img_dir
 
     if args.cfg_file is not None:
         cfg_from_file(args.cfg_file)
@@ -617,7 +555,7 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=False):
                     if pascal_classes[j] == 'hand':
                         hand_dets = cls_dets.cpu().numpy()
             
-            # NR ADDITION START NOT DONE
+            # NR ADDITION START
             for hand_idx, i in enumerate(range(np.minimum(10, hand_dets.shape[0]))):
                 bbox = list(int(np.round(x)) for x in hand_dets[i, :4])  # left, top, right, bottom
                 score = hand_dets[i, 4]
@@ -627,7 +565,7 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=False):
                 side_map2 = {0:'Left', 1:'Right'}
                 state_map = {0:'No Contact', 1:'Self Contact', 2:'Other Person Contact', 3:'Portable Object', 4:'Stationary Object Contact'}
                 # if the hand is touching portable object, check how much blue is in it because we might need to refine that prediction to rule out glvoed hands
-                
+
                 if verbose:
                     print(f"{imglist[num_images]}: {side_map2[lr]} hand: {state_map2[state]} {score:.2f}")
 
@@ -640,36 +578,15 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=False):
                         state = 0
                         score = 1
 
-                df_row_list.append({'image': imglist[num_images], 'contact_label': state_map[state], 'probability': int(score * 100)})
-            # NR ADDITION END
-            # for j in range(1, len(pascal_classes)):  # loops through ('targetobject' 'hand')
-            #     # if there is det
-            #     if inds.numel() > 0:      
-            #         # NR ADDITION START
-            #         if verbose:
-            #             print(f"----------------------{imglist[num_images]}----------------------")
-            #             print(pascal_classes[j], "pascal j")
-            #         contact_label_map = {0: 'N', 1: 'S', 2: 'O', 3: 'P', 4: 'F'}  # This is actual mapping
-            #         contact_label_map_english = {0: 'No Contact', 1: 'Self Contact', 2: 'Other Person Contact', 3: 'Portable Object Contact', 4: 'Stationary Object Contact'}
-            #         contact_indices_for_dets = contact_indices[inds]
-            #         for det_index, det in enumerate(cls_dets):
-            #             contact_index = contact_indices_for_dets[det_index].item()  # Get the contact index for this detection
-            #             contact_label = contact_label_map.get(contact_index, 'Unknown')  # Get the contact label
-            #             if verbose:
-            #                 print(f'Detection {det_index}: Contact Type - {contact_label}')
-            #             contact_label_english = contact_label_map_english.get(contact_index, 'Unknown')
-            #         output_dict[imglist[num_images]] = contact_label_english  # this loses info from printed stuff, but they all seem to be repeats
-            #         if imglist[num_images] not in output_dict_new[contact_label_english]:
-            #             output_dict_new[contact_label_english].append(imglist[num_images])
-            #             # df_row_list.append({'image': imglist[num_images], 'contact_label': contact_label_english})  # BOSSMAN2
-            #         # NR ADDITION END
-                        
-            
-                
+                df_row_list.append({'frame_id': imglist[num_images], 'contact_label_pred': state_map[state], 'probability': int(score * 100)})
+
             if vis:
                 # visualization
                 # im2show = vis_detections_filtered_objects_PIL_NR(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)  # doesnt give output for some reason
-                im2show = vis_detections_filtered_objects_PIL(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)
+                # im2show = vis_detections_filtered_objects_PIL(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)
+                from model.utils.net_utils import nr_draw_bbox
+                im2show = nr_draw_bbox(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)
+                im2show = Image.fromarray(cv2.cvtColor(im2show, cv2.COLOR_BGR2RGB))  # convert to PIL image
 
             misc_toc = time.time()
             nms_time = misc_toc - misc_tic
@@ -685,7 +602,8 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=False):
                     os.makedirs(folder_name, exist_ok=True)
                     result_path = os.path.join(
                         folder_name, imglist[num_images][:-4] + "_det.png")
-
+                    
+                    
                     im2show.save(result_path)
                 else:
                     im2showRGB = cv2.cvtColor(im2show, cv2.COLOR_BGR2RGB)
@@ -712,6 +630,6 @@ if __name__ == "__main__":
     # Print the counts for each unique value
     # need to use condense_dataframe() from caller.ipynb to get meaningful info out of it!
     print("--------results (ran from __name__ == __main__ ----------)")
-    value_counts = results['contact_label'].value_counts()
+    value_counts = results['contact_label_pred'].value_counts()
     for label, count in value_counts.items():
         print(f'{label}: {count}')

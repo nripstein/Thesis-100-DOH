@@ -10,6 +10,8 @@ import pdb
 import random
 from PIL import Image, ImageDraw, ImageFont
 from model.utils.viz_hand_obj import *
+from bounding_box import bounding_box as bb
+
 
 def save_net(fname, net):
     import h5py
@@ -94,6 +96,31 @@ def vis_detections_filtered_objects(im, obj_dets, hand_dets, thresh=0.8):
         im = vis_detections(im, 'hand', hand_dets, thresh)
     return im
 
+
+def nr_draw_bbox(im, obj_dets, hand_dets, thresh_hand=0.8, thresh_obj=0.01):
+    def draw_bbox(img, coords, label, color) -> np.ndarray:
+        bb.add(img, coords[0], coords[1], coords[2], coords[3], label, color)
+        return img
+
+    image = im
+
+    if (obj_dets is not None) and (hand_dets is not None):
+        img_obj_id = filter_object(obj_dets, hand_dets)
+        for obj_idx, i in enumerate(range(np.minimum(10, obj_dets.shape[0]))):
+            bbox = list(int(np.round(x)) for x in obj_dets[i, :4])
+            score = obj_dets[i, 4]
+            if score > thresh_obj and i in img_obj_id:
+                image = draw_bbox(image, bbox, "O", "yellow")
+
+        for hand_idx, i in enumerate(range(np.minimum(10, hand_dets.shape[0]))):
+            bbox = list(int(np.round(x)) for x in hand_dets[i, :4])
+            score = hand_dets[i, 4]
+            lr = hand_dets[i, -1]
+            state = hand_dets[i, 5]
+            if score > thresh_hand:
+                color = "red" if side_map3[lr] == "r" else "green"
+                image = draw_bbox(image, bbox, f"{side_map3[lr]}-{state_map2[state]}", color)
+    return image
 
 
 def vis_detections_filtered_objects_PIL(im, obj_dets, hand_dets, thresh_hand=0.8, thresh_obj=0.01, font_path='lib/model/utils/times_b.ttf'):
