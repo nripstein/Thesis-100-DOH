@@ -165,11 +165,6 @@ def get_blue_bbox_proportion(img: np.ndarray, bbox: list, vis_debug: bool = Fals
     return blue_proportion
 
 
-lr = cfg.TRAIN.LEARNING_RATE
-momentum = cfg.TRAIN.MOMENTUM
-weight_decay = cfg.TRAIN.WEIGHT_DECAY
-
-
 def _get_image_blob(im: np.ndarray):
     """Converts an image into a network input.
     Arguments:
@@ -257,7 +252,6 @@ def extract_frames(video_path: str) -> str:
     return images_dir
 
 
-
 def dir_or_video(path):
     def is_video_file(filename):
         video_extensions = ['.mp4', '.avi', '.mkv', '.mov', '.flv']  # Add more video extensions if needed
@@ -273,15 +267,6 @@ def dir_or_video(path):
 
 
 def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=True):
-    contact_label_map_english = {0: 'No Contact', 1: 'Self Contact', 2: 'Other Person Contact', 3: 'Portable Object Contact', 4: 'Stationary Object Contact'}
-    output_dict = {}
-    output_dict_new = {
-        'No Contact': [],
-        'Self Contact': [],
-        'Other Person Contact': [],
-        'Portable Object Contact': [],
-        'Stationary Object Contact': []
-    }
     df_row_list = []
     args = parse_args()
 
@@ -580,14 +565,6 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=True):
 
                 df_row_list.append({'frame_id': imglist[num_images], 'contact_label_pred': state_map[state], 'probability': int(score * 100)})
 
-            if vis:
-                # visualization
-                # im2show = vis_detections_filtered_objects_PIL_NR(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)  # doesnt give output for some reason
-                # im2show = vis_detections_filtered_objects_PIL(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)
-                from model.utils.net_utils import nr_draw_bbox
-                im2show = nr_draw_bbox(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)
-                im2show = Image.fromarray(cv2.cvtColor(im2show, cv2.COLOR_BGR2RGB))  # convert to PIL image
-
             misc_toc = time.time()
             nms_time = misc_toc - misc_tic
 
@@ -597,12 +574,16 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=True):
                     sys.stdout.flush()
 
             if save_imgs:
+                from nr_utils.bbox_draw import draw_standard_bboxes, draw_pretty_bboxes
+                # im2show = draw_standard_bboxes(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)
+                im2show = draw_pretty_bboxes(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)
+                im2show = Image.fromarray(cv2.cvtColor(im2show, cv2.COLOR_BGR2RGB))  # convert to PIL image
+
                 if vis and webcam_num == -1:
                     folder_name = args.save_dir
                     os.makedirs(folder_name, exist_ok=True)
                     result_path = os.path.join(
                         folder_name, imglist[num_images][:-4] + "_det.png")
-                    
                     
                     im2show.save(result_path)
                 else:
