@@ -31,37 +31,6 @@ def draw_standard_bboxes(im, obj_dets, hand_dets, thresh_hand=0.8, thresh_obj=0.
     return im
 
 
-# def draw_pretty_bboxes(im, obj_dets, hand_dets, thresh_hand=0.8, thresh_obj=0.01):
-#     """
-#     Colors better than default
-
-#     - Doesn't draw bounding boxes for objects which take up 50+% of the frame
-#     - only puts a bounding box on the smallest object
-#     """
-#     if (obj_dets is not None) and (hand_dets is not None):
-#         img_obj_id = filter_object(obj_dets, hand_dets)
-#         for obj_idx, i in enumerate(range(np.minimum(10, obj_dets.shape[0]))):
-#             bbox = list(int(np.round(x)) for x in obj_dets[i, :4])
-#             score = obj_dets[i, 4]
-#             # don't draw bbox if it takes up more than half the frame
-#             if (bbox[0] - bbox[2]) * (bbox[1] - bbox[3]) > 0.5 * im.shape[0] * im.shape[1]:
-#                 continue
-
-#             if score > thresh_obj and i in img_obj_id:
-#                 im = draw_bbox(im, bbox, "O", "yellow")
-
-#         for hand_idx, i in enumerate(range(np.minimum(10, hand_dets.shape[0]))):
-#             bbox = list(int(np.round(x)) for x in hand_dets[i, :4])
-#             score = hand_dets[i, 4]
-#             lr = hand_dets[i, -1]
-#             state = hand_dets[i, 5]
-#             if score > thresh_hand:
-#                 im = draw_bbox(im, bbox, f"{side_map2[lr]}-{state_map2[state]}", "navy")
-#     return im
-
-
-import numpy as np
-
 def draw_pretty_bboxes(im, obj_dets, hand_dets, thresh_hand=0.8, thresh_obj=0.01):
     """
     Colors better than default

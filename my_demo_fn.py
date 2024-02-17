@@ -276,7 +276,10 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=True):
         dir_type = dir_or_video(img_dir)
         if dir_type == "video":
             new_img_dir = extract_frames(img_dir)
-        args.image_dir = new_img_dir
+            args.image_dir = new_img_dir
+    from pathlib import Path
+    args.save_dir = os.path.join(Path(args.image_dir).parent, "images_det")
+    # args.save_dir = os.path.join(video_dir, f"images_det") # NOT DONE! DEAL W THIS
 
     if args.cfg_file is not None:
         cfg_from_file(args.cfg_file)
@@ -539,31 +542,49 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=True):
                         obj_dets = cls_dets.cpu().numpy()
                     if pascal_classes[j] == 'hand':
                         hand_dets = cls_dets.cpu().numpy()
-            
+
             # NR ADDITION START
-            for hand_idx, i in enumerate(range(np.minimum(10, hand_dets.shape[0]))):
-                bbox = list(int(np.round(x)) for x in hand_dets[i, :4])  # left, top, right, bottom
-                score = hand_dets[i, 4]
-                lr = hand_dets[i, -1]
-                state = hand_dets[i, 5]
-                state_map2 = {0:'N', 1:'S', 2:'O', 3:'P', 4:'F'}
-                side_map2 = {0:'Left', 1:'Right'}
-                state_map = {0:'No Contact', 1:'Self Contact', 2:'Other Person Contact', 3:'Portable Object', 4:'Stationary Object Contact'}
-                # if the hand is touching portable object, check how much blue is in it because we might need to refine that prediction to rule out glvoed hands
+            if hand_dets is not None:
+                for hand_idx, i in enumerate(range(np.minimum(10, hand_dets.shape[0]))):
+                    bbox = list(int(np.round(x)) for x in hand_dets[i, :4])  # left, top, right, bottom
+                    score = hand_dets[i, 4]
+                    lr = hand_dets[i, -1]
+                    state = hand_dets[i, 5]
+                    state_map2 = {0: 'N', 1: 'S', 2: 'O', 3: 'P', 4: 'F'}
+                    side_map2 = {0: 'Left', 1: 'Right'}
+                    state_map = {0: 'No Contact', 1: 'Self Contact', 2: 'Other Person Contact', 3: 'Portable Object', 4: 'Stationary Object Contact'}
+                    # if the hand is touching portable object, check how much blue is in it because we might need to refine that prediction to rule out glvoed hands
 
-                if verbose:
-                    print(f"{imglist[num_images]}: {side_map2[lr]} hand: {state_map2[state]} {score:.2f}")
+                    if verbose:
+                        print(f"{imglist[num_images]}: {side_map2[lr]} hand: {state_map2[state]} {score:.2f}")
+                        print(bbox)
 
-                if blue_refine:
-                    if state == 3:
-                        hand_percent_blue = get_blue_bbox_proportion(im, bbox=bbox) * 100
-                    else:
-                        hand_percent_blue = -100
-                    if hand_percent_blue > 50:
-                        state = 0
-                        score = 1
+                    if blue_refine:
+                        if state == 3:
+                            hand_percent_blue = get_blue_bbox_proportion(im, bbox=bbox) * 100
+                        else:
+                            hand_percent_blue = -100
+                        if hand_percent_blue > 50:
+                            state = 0  # no contact
+                            score = 1  # certain
+                    # add the data (even if it doesn't reach the threshold)
+                    df_row_list.append({'frame_id': imglist[num_images],
+                                        'contact_label_pred': state_map[state],
+                                        'probability': int(score * 100),
+                                        'bbox': bbox,
+                                        'type': 'hand',
+                                        'which': side_map2[lr]})
 
-                df_row_list.append({'frame_id': imglist[num_images], 'contact_label_pred': state_map[state], 'probability': int(score * 100)})
+            if obj_dets is not None:
+                for obj_idx, i in enumerate(range(np.minimum(10, obj_dets.shape[0]))):
+                    bbox = list(int(np.round(x)) for x in obj_dets[i, :4])
+                    score = obj_dets[i, 4]
+                    df_row_list.append({'frame_id': imglist[num_images],
+                                        'contact_label_pred': "NA",
+                                        'probability': int(score * 100),
+                                        'bbox': bbox,
+                                        'type': 'obj',
+                                        'which': "NA"})
 
             misc_toc = time.time()
             nms_time = misc_toc - misc_tic
@@ -584,7 +605,7 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=True):
                     os.makedirs(folder_name, exist_ok=True)
                     result_path = os.path.join(
                         folder_name, imglist[num_images][:-4] + "_det.png")
-                    
+
                     im2show.save(result_path)
                 else:
                     im2showRGB = cv2.cvtColor(im2show, cv2.COLOR_BGR2RGB)
