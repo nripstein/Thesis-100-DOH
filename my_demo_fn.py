@@ -19,6 +19,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import pandas as pd
 from tqdm import tqdm
 from PIL import Image
+from nr_utils.bbox_draw import draw_standard_bboxes, draw_pretty_bboxes
 #NR ADDITION END
 import pdb
 import time
@@ -263,7 +264,7 @@ def dir_or_video(path):
     elif is_video_file(path):
         return "video"
     else:
-        raise TypeError("TYPE OF FILE UNKNOWN")
+        raise TypeError(f"TYPE OF FILE UNKNOWN: {type(path)}")
 
 
 def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=True):
@@ -559,6 +560,7 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=True):
                         print(f"{imglist[num_images]}: {side_map2[lr]} hand: {state_map2[state]} {score:.2f}")
                         print(bbox)
 
+                    blue_status = "NA"
                     if blue_refine:
                         if state == 3:
                             hand_percent_blue = get_blue_bbox_proportion(im, bbox=bbox) * 100
@@ -567,13 +569,15 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=True):
                         if hand_percent_blue > 50:
                             state = 0  # no contact
                             score = 1  # certain
+                            blue_status = "blue_discard"
                     # add the data (even if it doesn't reach the threshold)
                     df_row_list.append({'frame_id': imglist[num_images],
                                         'contact_label_pred': state_map[state],
                                         'probability': int(score * 100),
                                         'bbox': bbox,
                                         'type': 'hand',
-                                        'which': side_map2[lr]})
+                                        'which': side_map2[lr],
+                                        'other_detail': blue_status})
 
             if obj_dets is not None:
                 for obj_idx, i in enumerate(range(np.minimum(10, obj_dets.shape[0]))):
@@ -584,7 +588,8 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=True):
                                         'probability': int(score * 100),
                                         'bbox': bbox,
                                         'type': 'obj',
-                                        'which': "NA"})
+                                        'which': "NA",
+                                        'other_detail': 'NA'})
 
             misc_toc = time.time()
             nms_time = misc_toc - misc_tic
@@ -595,7 +600,6 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=True):
                     sys.stdout.flush()
 
             if save_imgs:
-                from nr_utils.bbox_draw import draw_standard_bboxes, draw_pretty_bboxes
                 # im2show = draw_standard_bboxes(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)
                 im2show = draw_pretty_bboxes(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)
                 im2show = Image.fromarray(cv2.cvtColor(im2show, cv2.COLOR_BGR2RGB))  # convert to PIL image

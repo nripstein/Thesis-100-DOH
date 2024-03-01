@@ -72,9 +72,8 @@ def draw_pretty_bboxes(im, obj_dets, hand_dets, thresh_hand=0.8, thresh_obj=0.01
     return im
 
 
-
-side_map = {'l':'Left', 'r':'Right'}
-side_map2 = {0:'Left', 1:'Right'}
+side_map = {'l': 'Left', 'r': 'Right'}
+side_map2 = {0: 'Left', 1: 'Right'}
 side_map3 = {0: 'L', 1: 'R'}
-state_map = {0:'No Contact', 1:'Self Contact', 2: 'Another Person', 3: 'Portable Object', 4: 'Stationary Object'}
-state_map2 = {0:'N', 1:'S', 2:'O', 3:'P', 4:'F'}
+state_map = {0: 'No Contact', 1: 'Self Contact', 2: 'Another Person', 3: 'Portable Object', 4: 'Stationary Object'}
+state_map2 = {0: 'N', 1: 'S', 2:' O', 3: 'P', 4: 'F'}
