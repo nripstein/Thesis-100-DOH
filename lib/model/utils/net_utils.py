@@ -96,36 +96,6 @@ def vis_detections_filtered_objects(im, obj_dets, hand_dets, thresh=0.8):
         im = vis_detections(im, 'hand', hand_dets, thresh)
     return im
 
-
-# def nr_draw_bbox(im, obj_dets, hand_dets, thresh_hand=0.8, thresh_obj=0.01):
-#     side_map3 = {0: 'L', 1: 'R'}
-#     state_map2 = {0: 'N', 1: 'S', 2: 'O', 3: 'P', 4: 'F'}
-
-#     def draw_bbox(img, coords, label, color) -> np.ndarray:
-#         bb.add(img, coords[0], coords[1], coords[2], coords[3], label, color)
-#         return img
-
-#     image = im
-
-#     if (obj_dets is not None) and (hand_dets is not None):
-#         img_obj_id = filter_object(obj_dets, hand_dets)
-#         for obj_idx, i in enumerate(range(np.minimum(10, obj_dets.shape[0]))):
-#             bbox = list(int(np.round(x)) for x in obj_dets[i, :4])
-#             score = obj_dets[i, 4]
-#             if score > thresh_obj and i in img_obj_id:
-#                 image = draw_bbox(image, bbox, "O", "yellow")
-
-#         for hand_idx, i in enumerate(range(np.minimum(10, hand_dets.shape[0]))):
-#             bbox = list(int(np.round(x)) for x in hand_dets[i, :4])
-#             score = hand_dets[i, 4]
-#             lr = hand_dets[i, -1]
-#             state = hand_dets[i, 5]
-#             if score > thresh_hand:
-#                 color = "red" if side_map3[lr] == "R" else "green"
-#                 image = draw_bbox(image, bbox, f"{side_map3[lr]}-{state_map2[state]}", color)
-#     return image
-
-
 def vis_detections_filtered_objects_PIL(im, obj_dets, hand_dets, thresh_hand=0.8, thresh_obj=0.01, font_path='lib/model/utils/times_b.ttf'):
 
     # convert to PIL
@@ -164,11 +134,8 @@ def vis_detections_filtered_objects_PIL(im, obj_dets, hand_dets, thresh_hand=0.8
                     draw_line_point(draw, side_idx, (int(hand_cc[0]), int(hand_cc[1])), (int(obj_cc[0]), int(obj_cc[1])))
 
 
-        
-
     elif hand_dets is not None:
         image = vis_detections_PIL(im, 'hand', hand_dets, thresh_hand, font_path)
-        
     return image
 
 def vis_detections_PIL(im, class_name, dets, thresh=0.8, font_path='lib/model/utils/times_b.ttf'):
