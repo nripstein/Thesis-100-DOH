@@ -1,7 +1,5 @@
 # --------------------------------------------------------
-# Tensorflow Faster R-CNN
-# Licensed under The MIT License [see LICENSE for details]
-# Written by Jiasen Lu, Jianwei Yang, based on code from Ross Girshick
+# Adopted from Tensorflow Faster R-CNN code
 # --------------------------------------------------------
 
 from __future__ import absolute_import
@@ -25,17 +23,6 @@ import pdb
 import time
 import cv2
 import torch
-# from torch.autograd import Variable
-# import torch.nn as nn
-# import torch.optim as optim
-# import torch.nn.functional as F
-# from PIL import Image
-
-# import torchvision.transforms as transforms
-# import torchvision.datasets as dset
-# from scipy.misc import imread
-# from roi_data_layer.roidb import combined_roidb
-# from roi_data_layer.roibatchLoader import roibatchLoader
 from model.utils.config import cfg, cfg_from_file, cfg_from_list, get_output_dir
 from model.rpn.bbox_transform import clip_boxes
 # from model.nms.nms_wrapper import nms
@@ -46,12 +33,11 @@ from model.utils.net_utils import save_net, load_net, vis_detections, vis_detect
 from model.utils.blob import im_list_to_blob
 from model.faster_rcnn.vgg16 import vgg16
 from model.faster_rcnn.resnet import resnet
-# import pdb
 
 
 def parse_args():
     """
-    Parse input arguments
+    Parse input arguments, for use if running from command line
     """
     parser = argparse.ArgumentParser(description='Train a Fast R-CNN network')
     parser.add_argument('--dataset', dest='dataset',
@@ -208,7 +194,7 @@ def _get_image_blob(im: np.ndarray):
 
 def extract_frames(video_path: str) -> str:
     """
-    Extracts frames and returns their dir
+    Extracts frames from video and returns their dir
     """
     # Check if the file exists
     if not os.path.isfile(video_path):
@@ -218,7 +204,7 @@ def extract_frames(video_path: str) -> str:
     # Extract the directory, video name, and extension
     video_dir, video_filename = os.path.split(video_path)
     video_name, video_ext = os.path.splitext(video_filename)
-    
+
     # Define the directory to store images
     images_dir = os.path.join(video_dir, f"{video_name}_imgs")
 
@@ -254,8 +240,9 @@ def extract_frames(video_path: str) -> str:
 
 
 def dir_or_video(path):
+    """Determines if path is a video or directory which contains images"""
     def is_video_file(filename):
-        video_extensions = ['.mp4', '.avi', '.mkv', '.mov', '.flv']  # Add more video extensions if needed
+        video_extensions = ['.mp4', '.avi', '.mkv', '.mov', '.flv']
         _, file_extension = os.path.splitext(filename)
         return file_extension.lower() in video_extensions
 
@@ -280,7 +267,6 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=True):
             args.image_dir = new_img_dir
     from pathlib import Path
     args.save_dir = os.path.join(Path(args.image_dir).parent, "images_det")
-    # args.save_dir = os.path.join(video_dir, f"images_det") # NOT DONE! DEAL W THIS
 
     if args.cfg_file is not None:
         cfg_from_file(args.cfg_file)
@@ -546,10 +532,11 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=True):
 
             # NR ADDITION START
             if hand_dets is not None:
+                blue_status_arr = np.zeros(hand_dets.shape[0])  # length = number of hands
                 for hand_idx, i in enumerate(range(np.minimum(10, hand_dets.shape[0]))):
                     bbox = list(int(np.round(x)) for x in hand_dets[i, :4])  # left, top, right, bottom
                     score = hand_dets[i, 4]
-                    lr = hand_dets[i, -1]
+                    lr = hand_dets[i, 9]
                     state = hand_dets[i, 5]
                     state_map2 = {0: 'N', 1: 'S', 2: 'O', 3: 'P', 4: 'F'}
                     side_map2 = {0: 'Left', 1: 'Right'}
@@ -562,34 +549,43 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=True):
 
                     blue_status = "NA"
                     if blue_refine:
-                        if state == 3:
-                            hand_percent_blue = get_blue_bbox_proportion(im, bbox=bbox) * 100
-                        else:
-                            hand_percent_blue = -100
+                        hand_percent_blue = get_blue_bbox_proportion(im, bbox=bbox) * 100
                         if hand_percent_blue > 50:
                             state = 0  # no contact
                             score = 1  # certain
                             blue_status = "blue_discard"
                     # add the data (even if it doesn't reach the threshold)
-                    df_row_list.append({'frame_id': imglist[num_images],
-                                        'contact_label_pred': state_map[state],
-                                        'probability': int(score * 100),
-                                        'bbox': bbox,
-                                        'type': 'hand',
-                                        'which': side_map2[lr],
-                                        'other_detail': blue_status})
+
+                    df_row_dict = {'frame_id': imglist[num_images],
+                                   'contact_label_pred': state_map[state],
+                                   'probability': int(score * 100),
+                                   'bbox': bbox,
+                                   'type': 'hand',
+                                   'which': side_map2[lr],
+                                   'other_detail': blue_status}
+                    df_row_list.append(df_row_dict)
+
+                    # if we're visualizing, we need the blue hand data included in hand_dets
+                    if save_imgs:
+                        blue_status_arr[i] = 1 if blue_status == "blue_discard" else 0
+
+                # Reshape blue_status_arr to have a single column
+                blue_status_arr = blue_status_arr.reshape(-1, 1)
+                hand_dets = np.hstack((hand_dets, blue_status_arr))  # now blue_status = hand_dets[i, 10]
 
             if obj_dets is not None:
                 for obj_idx, i in enumerate(range(np.minimum(10, obj_dets.shape[0]))):
                     bbox = list(int(np.round(x)) for x in obj_dets[i, :4])
                     score = obj_dets[i, 4]
-                    df_row_list.append({'frame_id': imglist[num_images],
-                                        'contact_label_pred': "NA",
-                                        'probability': int(score * 100),
-                                        'bbox': bbox,
-                                        'type': 'obj',
-                                        'which': "NA",
-                                        'other_detail': 'NA'})
+                    df_row_dict = {'frame_id': imglist[num_images],
+                                   'contact_label_pred': "NA",
+                                   'probability': int(score * 100),
+                                   'bbox': bbox,
+                                   'type': 'obj',
+                                   'which': "NA",
+                                   'other_detail': 'NA'}
+
+                    df_row_list.append(df_row_dict)
 
             misc_toc = time.time()
             nms_time = misc_toc - misc_tic
@@ -601,7 +597,9 @@ def main(verbose=False, save_imgs=False, img_dir=None, blue_refine=True):
 
             if save_imgs:
                 # im2show = draw_standard_bboxes(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)
-                im2show = draw_pretty_bboxes(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)
+                # im2show = draw_pretty_bboxes(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)
+                from nr_utils.bbox_draw import draw_presentation_bboxes
+                im2show = draw_presentation_bboxes(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj)
                 im2show = Image.fromarray(cv2.cvtColor(im2show, cv2.COLOR_BGR2RGB))  # convert to PIL image
 
                 if vis and webcam_num == -1:
